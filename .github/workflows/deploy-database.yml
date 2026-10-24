@@ -1,0 +1,32 @@
+name: Apply database changes
+
+# Applies new files in supabase/migrations to the live Supabase database
+# whenever they reach main. Needs the SUPABASE_DB_URL repository secret
+# (see README, step 2). Skips quietly until that secret exists.
+
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/migrations/**"]
+  workflow_dispatch:
+
+concurrency: database-migrations
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.SUPABASE_DB_URL != ''
+      - uses: supabase/setup-cli@v1
+        if: env.SUPABASE_DB_URL != ''
+        with:
+          version: latest
+      - name: Push migrations
+        if: env.SUPABASE_DB_URL != ''
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --include-all
+      - name: Secret not set yet
+        if: env.SUPABASE_DB_URL == ''
+        run: echo "SUPABASE_DB_URL is not set; skipping. See README step 2."
