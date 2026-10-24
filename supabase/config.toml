@@ -1,0 +1,3 @@
+# Supabase CLI settings. The live project is configured in the Supabase dashboard;
+# this file only lets the CLI find the migrations in this folder.
+project_id = "dccvalidator"
