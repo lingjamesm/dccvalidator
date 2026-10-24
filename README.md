@@ -37,6 +37,8 @@ You do these steps once, in the browser. Nothing needs installing on your comput
 
 From then on, database changes apply automatically whenever they reach `main`.
 
+If the run fails with "password authentication failed", the password in the secret doesn't match. Alternatively, open the migration file in `supabase/migrations/` on GitHub, click **Copy raw file**, paste it into Supabase's **SQL Editor**, and click **Run**. Phase 1 was set up this way.
+
 ### 3. Deploy the website on Vercel
 
 1. Sign in at [vercel.com](https://vercel.com) with GitHub, click **Add New → Project**, and import `dccvalidator`.
