@@ -17,7 +17,7 @@ export default async function WorkspacePage() {
   const [{ data: submissions, error }, { data: shares }] = await Promise.all([
     supabase
       .from("submissions")
-      .select("id, owner_id, entry_id, version, title, channel, schemes, status, created_at")
+      .select("id, owner_id, entry_id, version, title, channel, schemes, status, created_at, scores:result->schemes")
       .order("created_at", { ascending: false }),
     supabase.from("shares").select("owner_id, owner_label").eq("recipient_id", user.id).eq("status", "active"),
   ]);
