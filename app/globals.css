@@ -9,6 +9,7 @@
   --danger: #b3261e;
   --warn-bg: #fff6e0;
   --warn-border: #e6c36a;
+  --warn-text: #8a5a00;
   --ok: #1f7a3a;
 }
 @media (prefers-color-scheme: dark) {
@@ -23,6 +24,7 @@
     --danger: #ff8a80;
     --warn-bg: #3a2f12;
     --warn-border: #7a6224;
+    --warn-text: #f0c060;
     --ok: #6fd08c;
   }
 }
@@ -49,7 +51,7 @@ p.lead { color: var(--muted); margin-top: 0; }
 form.stack { display: flex; flex-direction: column; gap: 16px; }
 label { display: flex; flex-direction: column; gap: 6px; font-weight: 500; }
 label.inline { flex-direction: row; align-items: center; gap: 8px; font-weight: 400; }
-input[type="text"], input[type="email"], input[type="password"], select {
+input[type="text"], input[type="email"], input[type="password"], select, textarea {
   font: inherit; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg); color: var(--text);
 }
@@ -73,6 +75,13 @@ tr:last-child td { border-bottom: none; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .qr { background: #fff; padding: 12px; border-radius: 8px; width: 216px; height: 216px; }
 code.secret { word-break: break-all; }
+details.card summary { cursor: pointer; }
+details.card[open] summary { margin-bottom: 12px; }
+.outcome-pass { color: var(--ok); font-weight: 600; }
+.outcome-fail { color: var(--danger); font-weight: 600; }
+.outcome-needs_review { color: var(--warn-text); font-weight: 600; }
+.scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.score { font-size: 2rem; font-weight: 700; }
 @media (max-width: 640px) {
   .table-wrap { overflow-x: auto; }
   header.site { padding: 12px 16px; }
