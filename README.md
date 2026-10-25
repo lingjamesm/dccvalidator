@@ -10,7 +10,9 @@ A web app where DCC submitters register with two-factor authentication, upload t
 - Database rules that keep each user's data separate, with sharing built in at the database level. Owners can share one submission or their whole workspace, read-only and revocable. The sharing screens and invite emails come in a later phase.
 - Automated tests that prove one user cannot read or change another user's data (`tests/rls`). They run on every change.
 
-Coming next: card number (PAN) masking, the rule library and AI validation with scoring, sharing screens and invite emails, paid ordering through Stripe, and Word and PowerPoint training packs.
+Phase 2 adds card number masking: uploads go to a locked quarantine area, a worker finds card numbers with OCR and the Luhn check, blacks out all but the last four digits, stores the masked copy and deletes the original. Only masked files can ever be downloaded.
+
+Coming next: the rule library and AI validation with scoring, sharing screens and invite emails, paid ordering through Stripe, and Word and PowerPoint training packs.
 
 ## How it fits together
 
@@ -18,6 +20,7 @@ Coming next: card number (PAN) masking, the rule library and AI validation with 
 | --- | --- | --- |
 | Website | Vercel (Next.js) | `app/`, `components/`, `lib/` |
 | Login, 2FA, database, file storage | Supabase | `supabase/migrations/` |
+| Card number masking worker | Render (Python, Tesseract OCR) | `worker/`, `render.yaml` |
 | Isolation tests | GitHub Actions + Postgres | `tests/rls/` |
 
 ## Setting it up (one time)
@@ -61,6 +64,12 @@ Under **Authentication → Sign In / Providers → Email**, make sure **Confirm 
 Open the Vercel address, register, confirm your email, and scan the QR code with Google Authenticator.
 
 Supabase's built-in email sender only allows a few emails an hour, which is fine for testing. A proper email service will be added with the sharing invites.
+
+### 6. Card number masking (phase 2)
+
+1. **Database update.** Open `supabase/migrations/20261025000000_pan_masking.sql` on GitHub, click **Copy raw file**, paste it into Supabase's **SQL Editor**, and click **Run**.
+2. **Worker.** In [Render](https://dashboard.render.com), click **New → Blueprint**, connect the `dccvalidator` repository, and click **Apply**. When asked for `SUPABASE_SERVICE_ROLE_KEY`, paste the **secret** key (or legacy `service_role` key) from Supabase **Project Settings → API Keys**. This key bypasses all privacy rules: only ever paste it into Render, never anywhere else. The worker runs on Render's Starter plan (about 7 USD a month).
+3. When Render shows the worker as **Live**, upload a screen in the app. Within a few seconds the file shows how many card numbers were masked.
 
 ## Looking after users
 

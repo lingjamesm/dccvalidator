@@ -85,8 +85,29 @@ insert into public.submission_files (submission_id, storage_path, original_name,
 values (:a1, 'aaaaaaaa-0000-0000-0000-000000000001/a1a1a1a1-0000-0000-0000-000000000001/screen.png',
         'screen.png', 'image/png', 1000);
 insert into storage.objects (bucket_id, name)
+values ('quarantine', 'aaaaaaaa-0000-0000-0000-000000000001/a1a1a1a1-0000-0000-0000-000000000001/screen.png');
+select tests.ok(true, 'alice uploads a file into quarantine under her own folder');
+
+select tests.ok((select count(*) = 0 from storage.objects where bucket_id = 'quarantine'),
+  'an unmasked upload in quarantine is unreadable, even to its owner');
+
+do $$
+begin
+  insert into storage.objects (bucket_id, name)
+  values ('submissions', 'aaaaaaaa-0000-0000-0000-000000000001/a1a1a1a1-0000-0000-0000-000000000001/direct.png');
+  raise exception 'FAIL: alice wrote straight to the masked files bucket';
+exception when insufficient_privilege then
+  raise notice 'ok - users cannot bypass masking by writing to the masked files bucket';
+end $$;
+
+-- The masking worker (service role) stores the masked copy.
+reset role;
+insert into storage.objects (bucket_id, name)
 values ('submissions', 'aaaaaaaa-0000-0000-0000-000000000001/a1a1a1a1-0000-0000-0000-000000000001/screen.png');
-select tests.ok(true, 'alice uploads a file into her own folder');
+update public.submission_files set status = 'masked', pan_masked_count = 1, masked_at = now();
+set role authenticated;
+select tests.ok((select count(*) = 1 from storage.objects where bucket_id = 'submissions'),
+  'alice can read her masked file');
 
 do $$
 begin
@@ -159,7 +180,7 @@ end $$;
 do $$
 begin
   insert into storage.objects (bucket_id, name)
-  values ('submissions', 'aaaaaaaa-0000-0000-0000-000000000001/a1a1a1a1-0000-0000-0000-000000000001/evil.png');
+  values ('quarantine', 'aaaaaaaa-0000-0000-0000-000000000001/a1a1a1a1-0000-0000-0000-000000000001/evil.png');
   raise exception 'FAIL: bob uploaded into alice''s folder';
 exception when insufficient_privilege then
   raise notice 'ok - bob cannot upload into alice''s folder';
@@ -226,7 +247,7 @@ select tests.ok((select scope = 'submission' from public.accept_share('tok-one')
 select tests.ok((select count(*) = 1 and bool_and(id = :a1) from public.submissions),
   'bob now sees exactly the shared submission');
 select tests.ok((select count(*) = 1 from public.submission_files), 'bob sees the shared submission''s file');
-select tests.ok((select count(*) = 1 from storage.objects), 'bob can download the shared file');
+select tests.ok((select count(*) = 1 from storage.objects where bucket_id = 'submissions'), 'bob can download the shared masked file');
 
 do $$
 declare n int;

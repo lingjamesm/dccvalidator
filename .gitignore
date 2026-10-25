@@ -9,3 +9,5 @@ next-env.d.ts
 .vercel
 .DS_Store
 supabase/.temp/
+__pycache__/
+.pytest_cache/

@@ -50,8 +50,9 @@ export default function NewSubmissionForm({ defaults }: { defaults: Defaults }) 
       setProgress(`Uploading ${i + 1} of ${files.length}: ${file.name}`);
       const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(-100);
       const path = `${user.id}/${submission.id}/${crypto.randomUUID()}-${safeName}`;
+      // Uploads go to quarantine; the masking service publishes a masked copy.
       const { error: uploadError } = await supabase.storage
-        .from("submissions")
+        .from("quarantine")
         .upload(path, file, { contentType: file.type, upsert: false });
       const { error: rowError } = uploadError
         ? { error: uploadError }
@@ -110,8 +111,8 @@ export default function NewSubmissionForm({ defaults }: { defaults: Defaults }) 
         <input name="files" type="file" multiple accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf" required />
       </label>
       <p className="notice">
-        Please use test cards only. Automatic card number masking is being added next; until then, do
-        not upload real card numbers.
+        Card numbers are found and masked automatically before anyone, including our checks, sees your
+        files. The original upload is then deleted. Please still use test cards where you can.
       </p>
       {error && <p className="error" role="alert">{error}</p>}
       {progress && <p className="muted">{progress}</p>}
