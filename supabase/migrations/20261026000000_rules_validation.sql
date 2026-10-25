@@ -328,7 +328,12 @@ insert into public.fact_definitions (key, document, question, kind, sort) values
   ('rc_dcc_currency_identified', 'receipt', 'Does the receipt show the currency code or symbol of the currency charged to the cardholder?', 'yes_no', 215),
   ('rc_amount_label', 'receipt', 'Does the receipt show the words "Transaction Currency", "Transaction Amount", "Transaction Charged" or "Amount Charged" next to the total charged?', 'yes_no', 245),
   ('rc_provider_statement', 'receipt', 'Does the receipt state that the currency conversion is provided or conducted by the merchant, ATM operator, bank branch or acquirer?', 'yes_no', 255),
-  ('rc_choice_confirmation', 'receipt', 'Does the receipt confirm that the cardholder accepted the conversion, such as a completed accept box or a statement that they were offered a choice including the local currency and agreed to pay in their own currency?', 'yes_no', 256);
+  ('rc_choice_confirmation', 'receipt', 'Does the receipt confirm that the cardholder accepted the conversion, such as a completed accept box or a statement that they were offered a choice including the local currency and agreed to pay in their own currency?', 'yes_no', 256),
+  ('cs_right_to_choose', 'choice_screen', 'Does the screen tell the cardholder that they have the right to choose the currency the transaction is completed in?', 'yes_no', 95),
+  ('cs_not_yes_no', 'choice_screen', 'Are the options presented as a choice between the two currencies, rather than as a YES or NO question about converting?', 'yes_no', 117),
+  ('cs_no_red_green', 'choice_screen', 'Are the currency options shown without contrasting colours such as red and green that could favour one option?', 'yes_no', 118),
+  ('cs_no_reconfirm', 'choice_screen', 'After the cardholder selects a currency, is there no extra prompt asking them to re-confirm or reconsider that choice?', 'yes_no', 119),
+  ('cs_cost_warning', 'choice_screen', 'Before the currency is chosen, does the screen show this statement word for word: "Make sure you understand the costs of currency conversion as they may be different depending on whether you select your home currency or the transaction currency."?', 'yes_no', 125);
 
 insert into public.rule_sets (id, number, status, notes, published_at)
 values ('00000000-0000-4000-8000-000000000001', 1, 'published',
