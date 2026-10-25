@@ -1,0 +1,17 @@
+# Render Blueprint: the card number masking worker.
+# In Render: New > Blueprint, pick this repository, then paste the Supabase
+# secret key when asked (see README, "Card number masking").
+services:
+  - type: worker
+    name: dcc-masking-worker
+    runtime: docker
+    rootDir: worker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: singapore
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        value: https://tmqjswionacfttgetikm.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

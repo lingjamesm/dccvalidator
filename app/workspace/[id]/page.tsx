@@ -1,11 +1,30 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import AutoRefresh from "@/components/AutoRefresh";
 import { CHANNELS, SCHEMES, STATUS, formatDate, type Submission } from "@/lib/labels";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type FileRow = { id: string; storage_path: string; original_name: string; mime_type: string; size_bytes: number; status: string };
+type FileRow = {
+  id: string;
+  storage_path: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  status: "quarantine" | "processing" | "masked" | "rejected";
+  pan_masked_count: number | null;
+  rejection_reason: string | null;
+};
+
+function maskingLabel(f: FileRow) {
+  if (f.status === "masked") {
+    const n = f.pan_masked_count ?? 0;
+    return n === 0 ? "No card numbers found" : `${n} card number${n === 1 ? "" : "s"} masked`;
+  }
+  if (f.status === "rejected") return `Removed: ${f.rejection_reason ?? "could not be checked"}`;
+  return "Checking for card numbers…";
+}
 
 export default async function SubmissionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,7 +46,7 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
   const [{ data: files }, { data: versions }] = await Promise.all([
     supabase
       .from("submission_files")
-      .select("id, storage_path, original_name, mime_type, size_bytes, status")
+      .select("id, storage_path, original_name, mime_type, size_bytes, status, pan_masked_count, rejection_reason")
       .eq("submission_id", id)
       .order("created_at")
       .returns<FileRow[]>(),
@@ -38,17 +57,20 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
       .order("version", { ascending: false }),
   ]);
 
-  // Short-lived download links, issued only after the access check above.
+  // Short-lived download links for masked files only, issued after the access check above.
   const links = new Map<string, string>();
-  if (files?.length) {
+  const masked = (files ?? []).filter((f) => f.status === "masked");
+  const pending = (files ?? []).some((f) => f.status === "quarantine" || f.status === "processing");
+  if (masked.length) {
     const { data: signed } = await supabase.storage
       .from("submissions")
-      .createSignedUrls(files.map((f) => f.storage_path), 300);
+      .createSignedUrls(masked.map((f) => f.storage_path), 300);
     signed?.forEach((s) => s.signedUrl && s.path && links.set(s.path, s.signedUrl));
   }
 
   return (
     <main>
+      {pending && <AutoRefresh />}
       <p>
         <Link href="/workspace">← Workspace</Link>
       </p>
@@ -77,6 +99,7 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
           <thead>
             <tr>
               <th>File</th>
+              <th>Card numbers</th>
               <th>Type</th>
               <th>Size</th>
             </tr>
@@ -92,6 +115,9 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
                   ) : (
                     f.original_name
                   )}
+                </td>
+                <td className={f.status === "rejected" ? "error" : f.status === "masked" ? "" : "muted"}>
+                  {maskingLabel(f)}
                 </td>
                 <td>{f.mime_type === "application/pdf" ? "PDF" : "Image"}</td>
                 <td>{(f.size_bytes / 1024 / 1024).toFixed(1)} MB</td>
