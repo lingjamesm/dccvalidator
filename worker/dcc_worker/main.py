@@ -132,19 +132,28 @@ class Supabase:
 
     def published_rules(self) -> tuple[dict, list[dict], list[dict]]:
         r = self.http.get(
-            "/rest/v1/rule_sets", params={"status": "eq.published", "select": "id,number,published_at"}
+            "/rest/v1/rule_sets",
+            params={"status": "eq.published", "select": "id,number,published_at,title,as_of,origin,document"},
         )
         r.raise_for_status()
         if not r.json():
             raise RuntimeError("no published rule set")
         rule_set = r.json()[0]
-        rules = self.http.get(
-            "/rest/v1/rules", params={"rule_set_id": f"eq.{rule_set['id']}", "order": "sort,code", "select": "*"}
-        )
-        rules.raise_for_status()
+        # Read in pages: the API returns at most 1000 rows per request.
+        rules: list[dict] = []
+        while True:
+            page = self.http.get(
+                "/rest/v1/rules",
+                params={"rule_set_id": f"eq.{rule_set['id']}", "order": "sort,code,id", "select": "*",
+                        "limit": "1000", "offset": str(len(rules))},
+            )
+            page.raise_for_status()
+            rules += page.json()
+            if len(page.json()) < 1000:
+                break
         facts = self.http.get("/rest/v1/fact_definitions", params={"order": "sort,key", "select": "*"})
         facts.raise_for_status()
-        return rule_set, rules.json(), facts.json()
+        return rule_set, rules, facts.json()
 
     def save_output(self, sub: dict, kind: str, file_name: str, data: bytes, mime: str) -> None:
         path = f"{sub['owner_id']}/{sub['id']}/{file_name}"
@@ -202,21 +211,27 @@ def validate(db: Supabase, client: anthropic.Anthropic, sub: dict) -> None:
         )
         return
     rule_set, rules, facts = db.published_rules()
-    rules = engine.applicable(rules, sub["schemes"], sub["channel"])
-    used_facts = {r["fact_key"] for r in rules if r["check_type"] == "fact"}
-    facts_asked = [f for f in facts if f["key"] in used_facts or f["key"] == "dcc_offer_shown"]
-    judgement_rules = [r for r in rules if r["check_type"] == "judgement"]
+    guidance = rule_set.pop("document", None) or {}
+    today = datetime.now(timezone.utc).date()
+    chosen = engine.select(rules, sub["schemes"], sub["channel"], today)
+    assessed = chosen["assessed"]
+    used_facts = {r["fact_key"] for r in assessed if r["check_type"] == "fact"}
+    facts_asked = [f for f in facts if f["key"] in used_facts]
+    judgement_rules = [r for r in assessed if r["check_type"] == "judgement"]
 
     documents = [ai.Document(f["original_name"], ai.page_images(db.download_masked(f["storage_path"]), f["mime_type"]))
                  for f in files]
     try:
-        extraction, docs, overview, model = ai.assess(client, documents, facts_asked, judgement_rules, sub["channel"])
+        extraction, docs, overview, model = ai.assess(
+            client, documents, facts_asked, judgement_rules, {**sub, "today": today.isoformat()},
+            context_rules=chosen["context"], guidance=guidance,
+        )
     except ai.AIUnavailable as e:
         log.warning("submission %s not assessed: %s", sub["id"], e)
         db.update_submission(sub["id"], {"status": "failed", "result": {"error": str(e)}})
         return
 
-    outcome = engine.evaluate(rules, facts, extraction, sub["schemes"], sub["channel"])
+    outcome = engine.evaluate(rules, facts, extraction, sub["schemes"], sub["channel"], today)
     result = {
         "validated_at": datetime.now(timezone.utc).isoformat(),
         "model": model,

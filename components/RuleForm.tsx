@@ -2,8 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { saveRule, type AdminState } from "@/lib/actions/admin";
-import { DOCUMENTS, EXPECTED, SEVERITIES, type Fact, type Rule } from "@/lib/rules";
-import { CHANNELS, SCHEMES } from "@/lib/labels";
+import { DOCUMENTS, ENVIRONMENTS, EXPECTED, SEVERITIES, type Fact, type Rule } from "@/lib/rules";
+import { RULE_TYPES, SCHEMES } from "@/lib/labels";
 
 export default function RuleForm({
   rule,
@@ -30,7 +30,7 @@ export default function RuleForm({
         <div className="row">
           <label>
             Code
-            <input type="text" name="code" defaultValue={rule?.code} required maxLength={31} placeholder="V-30" />
+            <input type="text" name="code" defaultValue={rule?.code} required maxLength={40} placeholder="V-30" />
           </label>
           <label>
             Scheme
@@ -45,16 +45,30 @@ export default function RuleForm({
             <input type="text" inputMode="numeric" name="sort" defaultValue={rule?.sort ?? 0} />
           </label>
         </div>
+        <div className="row">
+          <label>
+            Type
+            <select name="rule_type" defaultValue={rule?.rule_type ?? "MUST"}>
+              {Object.entries(RULE_TYPES).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Checked against
+            <input type="text" name="evaluates" defaultValue={rule?.evaluates ?? "SCREEN/RECEIPT"} maxLength={80} />
+          </label>
+        </div>
         <div>
           Applies to
           <div className="row">
-            {Object.entries(CHANNELS).map(([k, v]) => (
+            {Object.entries(ENVIRONMENTS).map(([k, v]) => (
               <label key={k} className="inline">
                 <input
                   type="checkbox"
-                  name="channels"
+                  name="environments"
                   value={k}
-                  defaultChecked={rule ? rule.channels.includes(k as Rule["channels"][number]) : true}
+                  defaultChecked={rule ? rule.environments.includes(k) : k === "ALL"}
                 />{" "}
                 {v}
               </label>

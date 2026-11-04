@@ -88,6 +88,9 @@ def test_validation_scores_and_writes_report():
     assert call["model"] == "claude-opus-5-5" and call["fallbacks"] == "default"
     assert call["betas"] == ["server-side-fallback-2026-07-01"]
     assert call["output_config"]["effort"] == "high"
+    assert call["system"][-1]["cache_control"] == {"type": "ephemeral"}
+    images = [b for b in call["messages"][0]["content"] if b["type"] == "image"]
+    assert images[-1]["cache_control"] == {"type": "ephemeral"}
     schema = call["output_config"]["format"]["schema"]
     assert schema["properties"]["judgements"]["items"]["properties"]["code"]["enum"] == ["V-11"]
     # only facts used by applicable rules are asked
@@ -128,3 +131,41 @@ def test_out_of_range_document_numbers_are_ignored():
     raw = {**ANSWER, "facts": [{**ANSWER["facts"][0], "document": 9}]}
     ex, docs, _ = ai.parse(raw, 2, FACTS)
     assert ex.facts["cs_both_options"].document is None
+
+
+class EchoClient(FakeClient):
+    """Passes every rule it is asked about."""
+
+    def __init__(self):
+        super().__init__(ANSWER)
+
+    def stream(self, **kwargs):
+        self.calls.append(kwargs)
+        props = kwargs["output_config"]["format"]["schema"]["properties"]
+        out = {}
+        if "documents" in props:
+            out.update(documents=ANSWER["documents"], overview="ok")
+        if "judgements" in props:
+            codes = props["judgements"]["items"]["properties"]["code"]["enum"]
+            out["judgements"] = [{"code": c, "outcome": "pass", "evidence": "seen", "document": 1} for c in codes]
+        msg = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=json.dumps(out))],
+                              model=ai.MODEL)
+        return FakeStream(msg)
+
+
+def test_large_rule_sets_are_judged_in_batches_with_cached_documents():
+    db, client = FakeDB(), EchoClient()
+    rules = [rule(f"V-RCP-{i:02d}", check_type="judgement") for i in range(1, 91)]
+    rules.append(rule("V-REG-01", check_type="judgement", evaluates="REGISTRATION"))
+    db.published_rules = lambda: ({"id": "rs", "number": 2, "document": {"engine_notes": {"x": 1}}}, rules, FACTS)
+    main.validate(db, client, SUB)
+    assert len(client.calls) == 3  # 40 + 40 + 10
+    assert "documents" in client.calls[0]["output_config"]["format"]["schema"]["properties"]
+    assert "documents" not in client.calls[1]["output_config"]["format"]["schema"]["properties"]
+    assert "Notes from the ruleset" in client.calls[0]["system"][0]["text"]
+    first_docs = [b for b in client.calls[0]["messages"][0]["content"] if b["type"] == "image"]
+    later_docs = [b for b in client.calls[2]["messages"][0]["content"] if b["type"] == "image"]
+    assert first_docs == later_docs  # identical prefix, so the cache is reused
+    r = db.updates["result"]
+    assert r["schemes"]["visa"] == {**r["schemes"]["visa"], "verdict": "compliant", "rules": 90, "not_checked": 1}
+    assert "document" not in r["rule_set"]

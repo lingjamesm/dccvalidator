@@ -3,8 +3,49 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
+import { ENVIRONMENTS } from "@/lib/rules";
+import { MAX_FILE_BYTES, checkRulesetFile } from "@/lib/ruleset-file";
 
 export type AdminState = { error?: string; saved?: boolean } | undefined;
+export type ImportState = { errors?: string[]; warnings?: string[] } | undefined;
+
+// An uploaded ruleset JSON file becomes the new draft (replacing any draft).
+export async function importRuleset(_prev: ImportState, formData: FormData): Promise<ImportState> {
+  const { supabase } = await requireAdmin();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { errors: ["Choose the ruleset JSON file to upload."] };
+  if (file.size > MAX_FILE_BYTES) return { errors: ["The file is larger than 8 MB."] };
+  const check = checkRulesetFile(await file.text());
+  if (!check.doc) return { errors: check.errors, warnings: check.warnings };
+
+  const fileName = file.name.slice(-200);
+  const { data: draftId, error } = await supabase.rpc("import_rule_set", { doc: check.doc, file_name: fileName });
+  if (error) return { errors: [error.message], warnings: check.warnings };
+  const notes = [`Imported from ${fileName}.`, ...check.warnings].join(" ").slice(0, 2000);
+  await supabase.from("rule_sets").update({ notes }).eq("id", draftId);
+  revalidatePath("/admin");
+  redirect(`/admin/rule-sets/${draftId}`);
+}
+
+// For rules that came from an imported file: only the app's own settings change.
+export async function saveRuleSettings(_prev: AdminState, formData: FormData): Promise<AdminState> {
+  const { supabase } = await requireAdmin();
+  const id = text(formData, "id");
+  const ruleSetId = text(formData, "rule_set_id");
+  const { error } = await supabase
+    .from("rules")
+    .update({
+      severity: text(formData, "severity"),
+      weight: Number(text(formData, "weight")),
+      verified: formData.get("verified") === "on",
+      active: formData.get("active") === "on",
+      notes: text(formData, "notes"),
+    })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath(`/admin/rule-sets/${ruleSetId}`);
+  return { saved: true };
+}
 
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
@@ -44,9 +85,10 @@ export async function saveRule(_prev: AdminState, formData: FormData): Promise<A
   const checkType = text(formData, "check_type");
   const expected = text(formData, "expected");
   const thresholdText = text(formData, "threshold");
-  const channels = formData.getAll("channels").map(String);
+  const picked = formData.getAll("environments").map(String).filter((e) => e in ENVIRONMENTS);
+  const environments = picked.includes("ALL") ? ["ALL"] : picked;
 
-  if (!channels.length) return { error: "Pick at least one channel." };
+  if (!environments.length) return { error: "Pick at least one environment." };
   const usesThreshold = checkType === "fact" && (expected === "at_least" || expected === "at_most");
   const threshold = usesThreshold ? Number(thresholdText) : null;
   if (usesThreshold && (thresholdText === "" || Number.isNaN(threshold))) {
@@ -56,7 +98,9 @@ export async function saveRule(_prev: AdminState, formData: FormData): Promise<A
   const fields = {
     code: text(formData, "code").toUpperCase(),
     scheme: text(formData, "scheme"),
-    channels,
+    environments,
+    rule_type: text(formData, "rule_type") || "MUST",
+    evaluates: text(formData, "evaluates") || "SCREEN/RECEIPT",
     title: text(formData, "title"),
     requirement: text(formData, "requirement"),
     source_reference: text(formData, "source_reference"),
@@ -78,7 +122,7 @@ export async function saveRule(_prev: AdminState, formData: FormData): Promise<A
     : await supabase.from("rules").insert({ ...fields, rule_set_id: ruleSetId });
   if (error) {
     if (error.code === "23505") return { error: "Another rule in this set already uses that code." };
-    if (error.code === "23514") return { error: "Please check the code (capital letters, digits and dashes) and the other fields." };
+    if (error.code === "23514") return { error: "Please check the code (capital letters, digits, dots and dashes) and the other fields." };
     return { error: error.message };
   }
   revalidatePath(`/admin/rule-sets/${ruleSetId}`);
