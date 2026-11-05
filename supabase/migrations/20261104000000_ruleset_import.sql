@@ -15,6 +15,16 @@
 -- Submissions gain the full list of environments the ruleset distinguishes,
 -- and an optional merchant country for region-specific rules.
 
+-- Questions added to the phase 3 migration after it was first released. Adds
+-- them if that earlier version was the one applied; does nothing otherwise.
+insert into public.fact_definitions (key, document, question, kind, sort) values
+  ('cs_right_to_choose', 'choice_screen', 'Does the screen tell the cardholder that they have the right to choose the currency the transaction is completed in?', 'yes_no', 95),
+  ('cs_not_yes_no', 'choice_screen', 'Are the options presented as a choice between the two currencies, rather than as a YES or NO question about converting?', 'yes_no', 117),
+  ('cs_no_red_green', 'choice_screen', 'Are the currency options shown without contrasting colours such as red and green that could favour one option?', 'yes_no', 118),
+  ('cs_no_reconfirm', 'choice_screen', 'After the cardholder selects a currency, is there no extra prompt asking them to re-confirm or reconsider that choice?', 'yes_no', 119),
+  ('cs_cost_warning', 'choice_screen', 'Before the currency is chosen, does the screen show this statement word for word: "Make sure you understand the costs of currency conversion as they may be different depending on whether you select your home currency or the transaction currency."?', 'yes_no', 125)
+on conflict (key) do nothing;
+
 -- ---------------------------------------------------------------------------
 -- Submissions: environments and merchant country
 -- ---------------------------------------------------------------------------
