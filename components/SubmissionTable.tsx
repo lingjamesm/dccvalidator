@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CHANNELS, SCHEMES, STATUS, formatDate, type Submission } from "@/lib/labels";
+import { CHANNELS, SCHEMES, STATUS, formatDate, scoreLine, type Submission } from "@/lib/labels";
 
 export default function SubmissionTable({ rows, owners }: { rows: Submission[]; owners?: Map<string, string> }) {
   return (
@@ -27,6 +27,14 @@ export default function SubmissionTable({ rows, owners }: { rows: Submission[]; 
               <td>{s.schemes.map((k) => SCHEMES[k]).join(", ")}</td>
               <td>
                 <span className="badge">{STATUS[s.status]}</span>
+                {s.status === "complete" &&
+                  s.schemes.map((k) =>
+                    s.scores?.[k] ? (
+                      <div key={k} className="muted">
+                        {SCHEMES[k]}: {scoreLine(s.scores[k])}
+                      </div>
+                    ) : null,
+                  )}
               </td>
               <td>{formatDate(s.created_at)}</td>
             </tr>

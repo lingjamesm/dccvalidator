@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export default async function NewSubmissionPage({ searchParams }: { searchParams: Promise<{ entry?: string }> }) {
   const { entry } = await searchParams;
-  let defaults: { entryId?: string; title?: string; channel?: string; schemes?: string[] } = {};
+  let defaults: { entryId?: string; title?: string; channel?: string; schemes?: string[]; merchantCountry?: string } = {};
 
   if (entry) {
     const supabase = await createClient();
@@ -13,11 +13,17 @@ export default async function NewSubmissionPage({ searchParams }: { searchParams
     } = await supabase.auth.getUser();
     const { data } = await supabase
       .from("submissions")
-      .select("entry_id, title, channel, schemes, owner_id")
+      .select("entry_id, title, channel, schemes, owner_id, merchant_country")
       .eq("id", entry)
       .maybeSingle();
     if (data && data.owner_id === user?.id) {
-      defaults = { entryId: data.entry_id, title: data.title, channel: data.channel, schemes: data.schemes };
+      defaults = {
+        entryId: data.entry_id,
+        title: data.title,
+        channel: data.channel,
+        schemes: data.schemes,
+        merchantCountry: data.merchant_country ?? undefined,
+      };
     }
   }
 

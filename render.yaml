@@ -15,3 +15,6 @@ services:
         value: https://tmqjswionacfttgetikm.supabase.co
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      # Turns on automated validation (phase 3). Set it in Render; never commit it.
+      - key: ANTHROPIC_API_KEY
+        sync: false

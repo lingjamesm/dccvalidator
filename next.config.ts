@@ -10,6 +10,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Ruleset JSON files are uploaded through a server action.
+  experimental: { serverActions: { bodySizeLimit: "10mb" } },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -13,6 +13,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  // Readable only after 2FA, so the admin link appears once the user is fully signed in.
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle()
+    : { data: null };
 
   return (
     <html lang="en">
@@ -24,6 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <nav>
             {user ? (
               <>
+                {profile?.role === "admin" && <Link href="/admin">Rule library</Link>}
                 <span className="muted">{user.email}</span>
                 <form action="/auth/signout" method="post">
                   <button type="submit" className="link">

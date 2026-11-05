@@ -311,6 +311,115 @@ select tests.login(:bob, 'bob@example.com', 'aal2');
 select tests.ok((select count(*) = 0 from public.submissions), 'an expired share grants nothing');
 
 -- ---------------------------------------------------------------------------
+-- Rule library: admins only, published sets are frozen
+-- ---------------------------------------------------------------------------
+reset role;
+update public.profiles set role = 'admin' where id = :carol;
+select tests.ok((select count(*) = 36 from public.rules), 'the starter library is seeded for both schemes');
+
+set role authenticated;
+select tests.login(:alice, 'alice@example.com', 'aal2');
+select tests.ok((select count(*) = 0 from public.rules), 'submitters cannot see the rule library');
+select tests.ok((select count(*) = 0 from public.fact_definitions), 'submitters cannot see the fact questions');
+do $$
+begin
+  perform public.start_rule_set_draft();
+  raise exception 'FAIL: a submitter started a draft';
+exception when raise_exception then
+  if sqlerrm like 'FAIL%' then raise; end if;
+  raise notice 'ok - submitters cannot start a rule set draft';
+end $$;
+do $$
+begin
+  update public.profiles set role = 'admin' where id = auth.uid();
+  raise exception 'FAIL: a submitter made themselves admin';
+exception when insufficient_privilege then
+  raise notice 'ok - submitters cannot make themselves admin';
+end $$;
+
+select tests.login(:carol, 'carol@example.com', 'aal1');
+select tests.ok((select count(*) = 0 from public.rules), 'admins without 2FA see nothing');
+
+select tests.login(:carol, 'carol@example.com', 'aal2');
+select tests.ok((select count(*) = 36 from public.rules), 'admins see the rule library');
+do $$
+begin
+  update public.rules set weight = 1 where code = 'V-01';
+  raise exception 'FAIL: a published rule was changed';
+exception when raise_exception then
+  if sqlerrm like 'FAIL%' then raise; end if;
+  raise notice 'ok - published rules cannot be changed';
+end $$;
+
+create temp table draft as select public.start_rule_set_draft() as id;
+select tests.ok((select count(*) = 36 from public.rules where rule_set_id = (select id from draft)),
+  'a draft starts as a copy of the published rules');
+select tests.ok((select public.start_rule_set_draft() = (select id from draft)), 'there is only one draft');
+update public.rules set weight = 2, verified = true where code = 'V-01' and rule_set_id = (select id from draft);
+select public.publish_rule_set((select id from draft));
+select tests.ok((select number = 2 and status = 'published' from public.rule_sets where id = (select id from draft)),
+  'publishing makes the draft the rule set in use');
+select tests.ok((select count(*) = 1 from public.rule_sets where status = 'published'), 'only one rule set is published');
+select tests.ok((select weight = 10 from public.rules r join public.rule_sets s on s.id = r.rule_set_id
+                 where r.code = 'V-01' and s.number = 1), 'earlier rule sets keep their rules unchanged');
+
+-- Importing a JSON ruleset
+select tests.login(:alice, 'alice@example.com', 'aal2');
+do $$
+begin
+  perform public.import_rule_set('{"rules":[{"id":"V-X-01","network":"VISA","type":"MUST","assertion":"x","environments":["ALL"]}]}', 'x.json');
+  raise exception 'FAIL: a submitter imported a ruleset';
+exception when raise_exception then
+  if sqlerrm like 'FAIL%' then raise; end if;
+  raise notice 'ok - submitters cannot import a ruleset';
+end $$;
+
+select tests.login(:carol, 'carol@example.com', 'aal2');
+create temp table imported as
+select public.import_rule_set(jsonb_build_object(
+  'metadata', jsonb_build_object('title', 'Test ruleset', 'as_of', '2026-11-01'),
+  'sources', jsonb_build_object('VDG', 'Visa DCC Guide'),
+  'rules', jsonb_build_array(
+    jsonb_build_object('id', 'V-01', 'network', 'VISA', 'type', 'MUST', 'environments', jsonb_build_array('ALL'),
+      'assertion', (select requirement from public.rules r join public.rule_sets s on s.id = r.rule_set_id
+                    where s.status = 'published' and r.code = 'V-01')),
+    jsonb_build_object('id', 'M-RCP-08.10', 'network', 'MC', 'type', 'SHOULD', 'environments', jsonb_build_array('ATM'),
+      'assertion', 'The receipt shows the ATM location.', 'status', 'FUTURE', 'valid_from', '2027-04-13',
+      'group', 'M-RCP-08')
+  )), 'test.json') as id;
+select tests.ok((select count(*) = 2 from public.rules where rule_set_id = (select id from imported)),
+  'an imported file becomes a draft with its rules');
+select tests.ok((select title = 'Test ruleset' and as_of = '2026-11-01' and document ? 'sources'
+                 and not document ? 'rules' from public.rule_sets where id = (select id from imported)),
+  'the draft keeps the file''s details and other sections');
+select tests.ok((select verified and weight = 2 from public.rules where rule_set_id = (select id from imported) and code = 'V-01'),
+  'admin settings carry over for unchanged rules');
+select tests.ok((select rule_type = 'SHOULD' and severity = 'minor' and environments = array['ATM'] and rule_status = 'FUTURE'
+                 and valid_from = '2027-04-13' and group_code = 'M-RCP-08' and scheme = 'mastercard'
+                 from public.rules where rule_set_id = (select id from imported) and code = 'M-RCP-08.10'),
+  'imported rule fields are kept');
+select tests.ok((select count(*) = 1 from public.rule_sets where status = 'draft'), 'an import replaces any earlier draft');
+select public.discard_rule_set_draft((select id from imported));
+
+-- ---------------------------------------------------------------------------
+-- Generated reports follow the submission's sharing
+-- ---------------------------------------------------------------------------
+reset role;
+insert into public.submission_outputs (submission_id, owner_id, kind, storage_path, file_name, mime_type)
+select id, owner_id, 'report', owner_id || '/' || id || '/report.pdf', 'report.pdf', 'application/pdf'
+from public.submissions where id = :a1;
+insert into storage.objects (bucket_id, name)
+select 'submissions', storage_path from public.submission_outputs;
+
+set role authenticated;
+select tests.login(:alice, 'alice@example.com', 'aal2');
+select tests.ok((select count(*) = 1 from public.submission_outputs), 'owners see their report');
+select tests.login(:carol, 'carol@example.com', 'aal2');
+select tests.ok((select count(*) = 0 from public.submission_outputs), 'others cannot see the report');
+select tests.ok((select count(*) = 0 from storage.objects where name like '%report.pdf'),
+  'others cannot download the report');
+
+-- ---------------------------------------------------------------------------
 -- Signed-out visitors get nothing
 -- ---------------------------------------------------------------------------
 reset role;

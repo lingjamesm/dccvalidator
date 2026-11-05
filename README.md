@@ -12,7 +12,15 @@ A web app where DCC submitters register with two-factor authentication, upload t
 
 Phase 2 adds card number masking: uploads go to a locked quarantine area, a worker finds card numbers with OCR and the Luhn check, blacks out all but the last four digits, stores the masked copy and deletes the original. Only masked files can ever be downloaded.
 
-Coming next: the rule library and AI validation with scoring, sharing screens and invite emails, paid ordering through Stripe, and Word and PowerPoint training packs.
+Phase 3 adds validation. Once a submission's files are masked, the worker asks Claude (model `claude-opus-5-5`, with server-side refusal fallbacks turned on) to classify each file and answer a fixed list of questions about it, quoting what it sees. The published rule set then decides pass, fail or needs review for every rule, scores each scheme, and writes a PDF report. Admins keep the rule library under **Rule library** in the site header: rules are edited in a draft and published as a new version, and every result records the version it was checked against.
+
+The DCC ruleset is maintained outside the app as a JSON file and imported by an admin whenever it changes (**Rule library → Import a ruleset file**). Each import is checked, becomes a draft that can be compared with the published set and browsed with its sources, change log, open issues and review log, and is used once published. Severity, weight, verified, active and notes set in the app carry over to the next import for every rule whose ID and wording are unchanged. Because the ruleset is drawn from confidential scheme documents, the file itself is never committed to this repository.
+
+Rule types: **MUST** and **MUST_NOT** rules are scored; **SHOULD** rules are reported as recommendations and not scored; **MAY** and **INFO** rules are given to the AI as context (exemptions and consequences). Rules that can only be checked against registration, certification, message data or dispute evidence apply but are listed separately as not checked from uploads. Rules are dated: expired rules and rules not yet in force on the day of validation are left out.
+
+Scoring, per scheme: score = 100 × weight of passed rules ÷ weight of scored rules that apply. Any failed critical rule makes the scheme **Not compliant**; all rules passing is **Compliant**; anything else is **Needs review**.
+
+Coming next: sharing screens and invite emails, paid ordering through Stripe, and Word and PowerPoint training packs.
 
 ## How it fits together
 
@@ -70,6 +78,16 @@ Supabase's built-in email sender only allows a few emails an hour, which is fine
 1. **Database update.** Open `supabase/migrations/20261025000000_pan_masking.sql` on GitHub, click **Copy raw file**, paste it into Supabase's **SQL Editor**, and click **Run**.
 2. **Worker.** In [Render](https://dashboard.render.com), click **New → Blueprint**, connect the `dccvalidator` repository, and click **Apply**. When asked for `SUPABASE_SERVICE_ROLE_KEY`, paste the **secret** key (or legacy `service_role` key) from Supabase **Project Settings → API Keys**. This key bypasses all privacy rules: only ever paste it into Render, never anywhere else. The worker runs on Render's Starter plan (about 7 USD a month).
 3. When Render shows the worker as **Live**, upload a screen in the app. Within a few seconds the file shows how many card numbers were masked.
+
+### 7. Validation and the rule library (phase 3)
+
+1. **Database update.** Paste `supabase/migrations/20261026000000_rules_validation.sql` into the Supabase **SQL Editor** and click **Run**, as before. It adds the rule library with starter rules for Visa and Mastercard, all marked as not yet verified.
+2. **Make yourself an admin.** In the SQL Editor, run (with your own email):
+   `update public.profiles set role = 'admin' where email = 'you@example.com';`
+   Sign out and in again; **Rule library** appears in the header.
+3. **API key.** In Render, open the worker's **Environment** and add `ANTHROPIC_API_KEY`. Without it the worker still masks files but does not validate them.
+4. **Ruleset import update.** Paste `supabase/migrations/20261104000000_ruleset_import.sql` into the SQL Editor and click **Run**. It lets rule sets be imported from the JSON ruleset file and adds the full list of environments to submissions.
+5. **Import the ruleset.** Under **Rule library**, choose the JSON file under **Import a ruleset file** and click **Check and import**. Problems in the file are listed and nothing is imported until they are fixed. Review the draft (the **Changes** tab compares it with the published set), tick **Verified** for rules you have checked, and click **Publish**. Until every rule used is verified, results and reports say they are indicative. Repeat this step whenever a new version of the file arrives.
 
 ## Looking after users
 

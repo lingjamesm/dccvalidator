@@ -8,7 +8,7 @@ const ACCEPTED = ["image/png", "image/jpeg", "application/pdf"];
 const MAX_BYTES = 20 * 1024 * 1024;
 const MAX_FILES = 20;
 
-type Defaults = { entryId?: string; title?: string; channel?: string; schemes?: string[] };
+type Defaults = { entryId?: string; title?: string; channel?: string; schemes?: string[]; merchantCountry?: string };
 
 export default function NewSubmissionForm({ defaults }: { defaults: Defaults }) {
   const [error, setError] = useState<string>();
@@ -19,6 +19,7 @@ export default function NewSubmissionForm({ defaults }: { defaults: Defaults }) 
     const data = new FormData(form);
     const title = String(data.get("title") ?? "").trim();
     const channel = String(data.get("channel") ?? "");
+    const merchantCountry = String(data.get("merchant_country") ?? "").trim().slice(0, 80);
     const schemes = data.getAll("schemes").map(String);
     const files = data.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
 
@@ -38,7 +39,13 @@ export default function NewSubmissionForm({ defaults }: { defaults: Defaults }) 
     setProgress("Creating submission…");
     const { data: submission, error: insertError } = await supabase
       .from("submissions")
-      .insert({ title, channel, schemes, ...(defaults.entryId ? { entry_id: defaults.entryId } : {}) })
+      .insert({
+        title,
+        channel,
+        schemes,
+        merchant_country: merchantCountry || null,
+        ...(defaults.entryId ? { entry_id: defaults.entryId } : {}),
+      })
       .select("id")
       .single();
     if (insertError || !submission) {
@@ -86,7 +93,7 @@ export default function NewSubmissionForm({ defaults }: { defaults: Defaults }) 
         <input name="title" type="text" defaultValue={defaults.title} placeholder="e.g. Countertop terminal, Nov 2026" required maxLength={200} />
       </label>
       <label>
-        Channel
+        Where the card is used
         <select name="channel" defaultValue={defaults.channel ?? "pos"}>
           {Object.entries(CHANNELS).map(([value, label]) => (
             <option key={value} value={value}>
@@ -94,6 +101,19 @@ export default function NewSubmissionForm({ defaults }: { defaults: Defaults }) 
             </option>
           ))}
         </select>
+      </label>
+      <label>
+        Merchant country (optional)
+        <input
+          name="merchant_country"
+          type="text"
+          defaultValue={defaults.merchantCountry}
+          placeholder="e.g. United Kingdom"
+          maxLength={80}
+        />
+        <span className="muted" style={{ fontWeight: 400 }}>
+          Some rules apply only in certain regions or countries.
+        </span>
       </label>
       <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
         <legend style={{ fontWeight: 500, marginBottom: 6 }}>Check against</legend>
